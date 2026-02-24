@@ -68,13 +68,44 @@ class Graph:
         self.weights_prob = weights[1]
         self.nodes = self.init_nodes(names=True)
 
+    def set_edge_weights(self, weights):
+        self.weights = weights[0]
+        self.weights_prob = weights[1]
+        count = 0
+        count_r = 0
+        for edge in self.edge_list:
+            u, v = edge[0], edge[1]
+            if not isinstance(self.nodes[u], RandomGate):
+                for e in self.nodes[u].output_edges:
+                    if e.node == self.nodes[v]:
+                        e.value = self.weights[count]
+                        break
+                count += 1
+            else:
+                for e in self.nodes[u].output_edges:
+                    if e.node == self.nodes[v]:
+                        e.value = self.weights_prob[count_r]
+                        break
+                count_r += 1
+
+        for gate in [n for n in self.nodes if isinstance(n, RandomGate)]:
+            edge_values = [e.value for e in gate.output_edges]
+            values_sum = sum(edge_values)
+            edge_values_scaled = [v / values_sum for v in edge_values]
+            for e, v in zip(gate.output_edges, edge_values_scaled):
+                e.value = v
+
     def update_edge_weights_random(self):
         self.weights = np.random.randint(1, 8, size=len(self.edge_list))
         self.weights_prob = np.random.dirichlet(np.ones(self.config[RandomGate] * 3), size=1)[0]
         self.nodes = self.init_nodes(names=True)
 
-    def simulate(self, steps=50):
-        self.simulator = Simulator(self.nodes)
+    def simulate(self, steps=50, agent=None):
+        if agent is not None:
+            from geevo.agent_simulation import AgentSimulator
+            self.simulator = AgentSimulator(self.nodes, agent)
+        else:
+            self.simulator = Simulator(self.nodes)
         self.simulator.run(steps=steps)
         return self.simulator.monitoring
 
@@ -165,8 +196,12 @@ class Graph2:
         self.weights = np.random.randint(1, 10, size=len(self.edge_list))
         self.nodes = self.init_nodes(names=True)
 
-    def simulate(self, steps=50):
-        self.simulator = Simulator(self.nodes)
+    def simulate(self, steps=50, agent=None):
+        if agent is not None:
+            from geevo.agent_simulation import AgentSimulator
+            self.simulator = AgentSimulator(self.nodes, agent)
+        else:
+            self.simulator = Simulator(self.nodes)
         self.simulator.run(steps=steps)
         return self.simulator.monitoring
 

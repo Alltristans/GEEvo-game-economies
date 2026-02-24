@@ -159,12 +159,17 @@ class Converter(Node):
     MAX_OUTPUT = 1
     COLOR = "gold"
 
-    def __init__(self, name=None, id=None):
+    def __init__(self, name=None, id=None, is_auto=True):
         super().__init__(name, id=id)
         self.called = False
+        self.is_auto = is_auto
 
-    def consume(self, call_chain):
+    def consume(self, call_chain, force_agent=False):
         if self.called is False:
+            if not self.is_auto and not force_agent:
+                self.step(call_chain)
+                return
+            
             resources_available = True
 
             if isinstance(self.input_edges[0].node, RandomGate):  # TODO fix this ugly workaround
@@ -200,12 +205,14 @@ class RandomGate(Node):
 
     def consume(self, entity, call_chain):
         probs = [edge.value for edge in self.output_edges]
-        for i in range(int(entity)):
-            edge = np.random.choice(self.output_edges, 1, p=probs)[0]
-            if isinstance(edge.node, Converter):
-                edge.node.consume(call_chain)
-            else:
-                edge.node.consume(1, call_chain)
+        if int(entity) > 0:
+            counts = np.random.multinomial(int(entity), probs)
+            for count, edge in zip(counts, self.output_edges):
+                for _ in range(count):
+                    if isinstance(edge.node, Converter):
+                        edge.node.consume(call_chain)
+                    else:
+                        edge.node.consume(1, call_chain)
         self.step(call_chain)
 
 

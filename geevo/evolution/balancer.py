@@ -4,7 +4,7 @@ from geevo.nodes import *
 
 class Balancer:
     def __init__(self, config, edge_list, balance_pool_ids, pop_size=10, n_sim=10, n_sim_steps=100, frozen_weights=None,
-                 balance_value=30, alpha=0.01):
+                 balance_value=30, alpha=0.01, agent=None):
         self.config = config
         self.edge_list = edge_list
         self.monitor = self.monitor = {"best": [], "avg": []}
@@ -18,6 +18,12 @@ class Balancer:
         self.balance_pool_ids = balance_pool_ids
         self.balance_value = balance_value
         self.threshold = 1 - alpha
+        self.agent = agent
+        
+        self.g = Graph(config=self.config, edge_list=self.edge_list)
+        for c in self.g.get_nodes_of(Converter):
+            c.is_auto = False
+        self._fit_cache = {}
 
     def init_ind(self):
         g = Graph(config=self.config, edge_list=self.edge_list)
@@ -34,51 +40,70 @@ class Balancer:
 
     def get_ind_fitness_single(self, ind):
         # minimize diff of two pools
-        try:
-            g = Graph(config=self.config, edge_list=self.edge_list, weights=ind)
-            res = g.simulate(self.n_sim_steps)
-        except ZeroDivisionError:
-            # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
-            return 0
-        keys = list(res.keys())
-        values = sorted([res[keys[self.balance_pool_ids[0]]][-1], res[keys[self.balance_pool_ids[1]]][-1]])
-        try:
-            return round(values[0] / values[1], 2)
-        except ZeroDivisionError:
-            return 1
+        agents = self.agent if isinstance(self.agent, list) else [self.agent]
+        fitnesses = []
+        self.g.set_edge_weights(ind)
+        for agent in agents:
+            # explicit reset of called states
+            for n in self.g.nodes:
+                if hasattr(n, 'called'): n.called = False
+            try:
+                res = self.g.simulate(self.n_sim_steps, agent=agent)
+            except ZeroDivisionError:
+                fitnesses.append(0)
+                continue
+            keys = list(res.keys())
+            values = sorted([res[keys[self.balance_pool_ids[0]]][-1], res[keys[self.balance_pool_ids[1]]][-1]])
+            try:
+                fitnesses.append(round(values[0] / values[1], 2))
+            except ZeroDivisionError:
+                fitnesses.append(1)
+        return round(sum(fitnesses) / len(fitnesses), 2) if fitnesses else 0
 
     def get_ind_fitness_single2(self, ind):
         # minimize diff of all pools along regular time steps
-        try:
-            g = Graph(config=self.config, edge_list=self.edge_list, weights=ind)
-            res = g.simulate(self.n_sim_steps)
-        except ZeroDivisionError:
-            # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
-            return 0
-        keys = [p for p in res.keys() if not isinstance(p, Drain)]
-        values = []
-        for i in range(0, self.n_sim_steps, 10):
-            values.append(sum([res[k][i] for k in keys]))
-        res = []
-        for idx in range(len(values) - 1):
-            res.append(values[idx] - values[idx + 1])
-        return sum(res) / len(res)
+        agents = self.agent if isinstance(self.agent, list) else [self.agent]
+        fitnesses = []
+        self.g.set_edge_weights(ind)
+        for agent in agents:
+            for n in self.g.nodes:
+                if hasattr(n, 'called'): n.called = False
+            try:
+                res = self.g.simulate(self.n_sim_steps, agent=agent)
+            except ZeroDivisionError:
+                fitnesses.append(0)
+                continue
+            keys = [p for p in res.keys() if not isinstance(p, Drain)]
+            values = []
+            for i in range(0, self.n_sim_steps, 10):
+                values.append(sum([res[k][i] for k in keys]))
+            res_list = []
+            for idx in range(len(values) - 1):
+                res_list.append(values[idx] - values[idx + 1])
+            fitnesses.append(sum(res_list) / len(res_list) if res_list else 0)
+        return sum(fitnesses) / len(fitnesses) if fitnesses else 0
 
     def get_ind_fitness_single3(self, ind):
         # align a given pool toward a given absolute value
-        try:
-            g = Graph(config=self.config, edge_list=self.edge_list, weights=ind)
-            res = g.simulate(self.n_sim_steps)
-        except ZeroDivisionError:
-            # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
-            return 0
-        keys = list(res.keys())
-        constraint = self.balance_value
-        values = sorted([res[keys[self.balance_pool_ids[0]]][-1], constraint])
-        try:
-            return round(values[0] / values[1], 2)
-        except ZeroDivisionError:
-            return 1
+        agents = self.agent if isinstance(self.agent, list) else [self.agent]
+        fitnesses = []
+        self.g.set_edge_weights(ind)
+        for agent in agents:
+            for n in self.g.nodes:
+                if hasattr(n, 'called'): n.called = False
+            try:
+                res = self.g.simulate(self.n_sim_steps, agent=agent)
+            except ZeroDivisionError:
+                fitnesses.append(0)
+                continue
+            keys = list(res.keys())
+            constraint = self.balance_value
+            values = sorted([res[keys[self.balance_pool_ids[0]]][-1], constraint])
+            try:
+                fitnesses.append(round(values[0] / values[1], 2))
+            except ZeroDivisionError:
+                fitnesses.append(1)
+        return round(sum(fitnesses) / len(fitnesses), 2) if fitnesses else 0
 
     def get_ind_fitness(self, ind):
         res = [self.get_ind_fitness_single3(ind) for _ in range(self.n_sim)]
@@ -87,7 +112,10 @@ class Balancer:
     def get_fitness(self, return_always=False):
         fitness = []
         for ind in self.population:
-            fitness.append(self.get_ind_fitness(ind))
+            k = str(ind)
+            if k not in self._fit_cache:
+                self._fit_cache[k] = self.get_ind_fitness(ind)
+            fitness.append(self._fit_cache[k])
 
         # sort by fitness
         fitness_sorted = np.argsort(fitness)
@@ -171,7 +199,7 @@ class Balancer:
 
 class BalancerV2:
     # fit on two different economies at once
-    def __init__(self, g_config1, g_config2, pop_size=10, n_sim=10, n_sim_steps=100, threshold=0.99):
+    def __init__(self, g_config1, g_config2, pop_size=10, n_sim=10, n_sim_steps=100, threshold=0.99, agent1=None, agent2=None):
         self.g_config1 = g_config1
         self.g_config2 = g_config2
         self.monitor = self.monitor = {"best": [], "avg": []}
@@ -182,6 +210,8 @@ class BalancerV2:
         self.init_population()
         self.result = None
         self.threshold = threshold
+        self.agent1 = agent1
+        self.agent2 = agent2
         print(n_sim)
 
     def init_ind(self):
@@ -203,9 +233,9 @@ class BalancerV2:
         # minimize diff of two pools of two diff graphs
         try:
             g1 = Graph(config=self.g_config1["conf"], edge_list=self.g_config1["edges"], weights=ind[0])
-            res1 = g1.simulate(self.n_sim_steps)
+            res1 = g1.simulate(self.n_sim_steps, agent=self.agent1)
             g2 = Graph(config=self.g_config2["conf"], edge_list=self.g_config2["edges"], weights=ind[1])
-            res2 = g2.simulate(self.n_sim_steps)
+            res2 = g2.simulate(self.n_sim_steps, agent=self.agent2)
         except ZeroDivisionError:
             # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
             return 0
