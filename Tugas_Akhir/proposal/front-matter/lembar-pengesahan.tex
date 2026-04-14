@@ -1,0 +1,120 @@
+\addcontentsline{toc}{chapter}{Lembar Pengesahan}
+\makeatletter
+\begin{center}
+    {\noindent\centering\textbf{\large\MakeUppercase{Lembar Pengesahan}}\par}
+
+    \vspace{1cm}
+    \textbf{\MakeUppercase{\@judul}}
+
+    \vspace{0.5cm}
+    \textbf{\MakeUppercase{\@title@}}
+
+    \vspace{0.75cm}
+    \textbf{\MakeUppercase{Proposal Tugas Akhir}}
+
+    \vspace{0.25cm}
+    Diajukan untuk memenuhi salah satu syarat
+
+    memperoleh gelar Sarjana Matematika pada
+
+    Program Studi S-1 \@departemen
+
+    Departemen~\@departemen
+
+    Fakultas~\@fakultas
+
+    Institut Teknologi Sepuluh Nopember
+
+    \vspace{0.5cm}
+    Oleh: \textbf{\@nama}
+
+    NRP. \@NRP
+
+    \vspace{0.5cm}
+    Menyetujui,
+
+    \vspace{0.5cm}
+    \ifthenelse{\equal{\pbb@tiga}{}\OR\equal{\pbb@tiga}{ }}
+        {
+            \ifthenelse{\equal{\pbb@dua}{}\OR\equal{\pbb@dua}{ }}
+                {
+                    Calon Dosen Pembimbing
+
+                    \vspace{2cm}
+                    \underline{\pbb@satu}
+                    
+                    NIP. \NIP@pbb@satu
+                }
+                {
+                    \newlength{\twocolumns}
+                    \setlength{\twocolumns}{.45\textwidth}
+                    \begin{minipage}{\twocolumns}
+                        \centering
+                        Calon Dosen Pembimbing I,
+
+                        \vspace{2cm}
+                        \underline{\pbb@satu}
+                        
+                        NIP. \NIP@pbb@satu
+                    \end{minipage}
+                    \begin{minipage}{\twocolumns}
+                        \centering
+                        Calon Dosen Pembimbing II,
+
+                        \vspace{2cm}
+                        \underline{\pbb@dua}
+                        
+                        NIP. \NIP@pbb@dua
+                    \end{minipage}
+                }
+        }
+        {
+            \newlength{\threecolumns}
+            \setlength{\threecolumns}{.3\textwidth}
+            \begin{minipage}{\threecolumns}
+                \centering
+                Calon Dosen Pembimbing I,
+
+                \vspace{2cm}
+                \underline{\pbb@satu}
+                
+                NIP. \NIP@pbb@satu
+            \end{minipage}
+            \begin{minipage}{\threecolumns}
+                \centering
+                Calon Dosen Pembimbing II,
+
+                \vspace{2cm}
+                \underline{\pbb@dua}
+                
+                NIP. \NIP@pbb@dua
+            \end{minipage}
+            \begin{minipage}{\threecolumns}
+                \centering
+                Calon Dosen Pembimbing III,
+
+                \vspace{2cm}
+                \underline{\pbb@tiga}
+                
+                NIP. \NIP@pbb@tiga
+            \end{minipage}
+        }
+
+    \vspace{0.5cm}
+    Mengetahui,
+
+    Kepala Program Studi Sarjana
+    
+    Departemen~\@departemen~{\singkatan@fakultas}-ITS
+
+    \vspace{2cm}
+    \underline{\@Kaprodi}
+    
+    NIP. \NIP@Kaprodi
+
+    \vspace{0.5cm}
+    Surabaya
+
+    {\@bulan~}, \@tahun
+\end{center}
+\makeatother
