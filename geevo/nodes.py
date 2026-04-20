@@ -226,16 +226,18 @@ class Converter(Node):
             
             resources_available = True
 
-            # Mekanisme bypass pengecualian topologi node probabilitas stokastik Markov (RandomGate) -- implementasi ad-hoc
-            if isinstance(self.input_edges[0].node, RandomGate):  # TODO fix this ugly workaround
+            # Mekanisme bypass pengecualian topologi node probabilitas stokastik Markov (RandomGate):
+            # Jika ANY input edge berasal dari RandomGate, langsung propagasi ke output dan return.
+            if any(isinstance(e.node, RandomGate) for e in self.input_edges):
                 self.output_edges[0].node.consume(self.output_edges[0].value, call_chain)
                 self.called = True
                 return
 
             # Mengevaluasi Operator Himpunan Boolean AND: 
             # Semua (forall) prasyarat sisi harus memenuhi x \geq limit konstraksi e
+            # Hanya node yang memiliki atribut 'pool' (Pool/FixedPool) yang dievaluasi
             for input_e in self.input_edges:
-                if not input_e.node.pool >= input_e.value:
+                if not hasattr(input_e.node, 'pool') or not input_e.node.pool >= input_e.value:
                     resources_available = False
                     
             if resources_available is True:

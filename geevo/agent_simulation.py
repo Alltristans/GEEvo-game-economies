@@ -48,7 +48,10 @@ class Agent:
                 ready = True
                 # Memverifikasi relasi inequalitas sumber daya dari koneksi masuk: 
                 # Nilai pool m harus \ge batas transfer minimum value e
+                # Skip node RandomGate karena tidak memiliki atribut 'pool'
                 for input_e in c.input_edges:
+                    if not hasattr(input_e.node, 'pool'):
+                        continue
                     if not input_e.node.pool >= input_e.value:
                         ready = False
                         break
