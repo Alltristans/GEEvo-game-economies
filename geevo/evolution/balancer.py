@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from geevo.graph import Graph
 from geevo.nodes import *
 
@@ -62,70 +63,6 @@ class Balancer:
         for i in range(self.pop_size):
             self.population.append([np.random.randint(1, 8, size=len(self.edge_list) - edges).tolist(),
                                     [round(i, 2) for i in np.random.uniform(0, 1, size=edges).tolist()]])
-
-    def get_ind_fitness_single(self, ind):
-        """
-        Fungsi Objektif 1: Minimasi rasio kesenjangan (Delta) antara 2 Pool Node yang berbeda.
-        \min_{\vec{w}} \left( 1 - \frac{\min(P_A, P_B)}{\max(P_A, P_B)} \right)
-        """
-        agents = self.agent if isinstance(self.agent, list) else [self.agent]
-        fitnesses = []
-        # Terapkan injeksi mutasi genetik w ke dalam Graph Edge Value (\vec{w}_t)
-        self.g.set_edge_weights(ind)
-        for agent in agents:
-            # explicit reset of called states
-            for n in self.g.nodes:
-                if hasattr(n, 'called'): n.called = False
-            try:
-                # Simulasi Integral Persamaan Graf (Batas atas integrasi n_sim_steps)
-                res = self.g.simulate(self.n_sim_steps, agent=agent)
-            except ZeroDivisionError:
-                fitnesses.append(0)
-                continue
-                
-            keys = list(res.keys())
-            # Urutkan nilai himpunan Pool_A dan Pool_B untuk mencegah domain pembagian rasio lebih dari 1
-            # values = [\text{Nilai Kecil}, \text{Nilai Besar}]
-            values = sorted([res[keys[self.balance_pool_ids[0]]][-1], res[keys[self.balance_pool_ids[1]]][-1]])
-            try:
-                # Perhitungan Fitness rasio P_{min} / P_{max} \in (0, 1]
-                fitnesses.append(round(values[0] / values[1], 2))
-            except ZeroDivisionError:
-                fitnesses.append(1)
-        # Menghitung Ekspektasi Rata-rata E[X] (Mean of Agent Profiles)
-        return round(sum(fitnesses) / len(fitnesses), 2) if fitnesses else 0
-
-    def get_ind_fitness_single2(self, ind):
-        """
-        Fungsi Objektif 2: Minimum differensial persentase deviasi aliran per waktu diskrit antar semua Pool \mathcal{P}
-        (Menghindari spike/ekstrem fluktuasi nilai seiring waktu; Derivatif/Turunan yang kecil $dp/dt \approx 0$).
-        """
-        agents = self.agent if isinstance(self.agent, list) else [self.agent]
-        fitnesses = []
-        self.g.set_edge_weights(ind)
-        for agent in agents:
-            for n in self.g.nodes:
-                if hasattr(n, 'called'): n.called = False
-            try:
-                res = self.g.simulate(self.n_sim_steps, agent=agent)
-            except ZeroDivisionError:
-                fitnesses.append(0)
-                continue
-            # Evaluasi khusus himpunan Pool tanpa Drain
-            keys = [p for p in res.keys() if not isinstance(p, Drain)]
-            values = []
-            
-            # Sampling turunan nilai total setiap t=(0, 10, 20...) -- interval fungsi per 10 steps
-            for i in range(0, self.n_sim_steps, 10):
-                values.append(sum([res[k][i] for k in keys]))
-                
-            res_list = []
-            # Derivatif Beda Maju (Forward Difference): f(x_t) - f(x_{t+1})
-            for idx in range(len(values) - 1):
-                res_list.append(values[idx] - values[idx + 1])
-                
-            fitnesses.append(sum(res_list) / len(res_list) if res_list else 0)
-        return sum(fitnesses) / len(fitnesses) if fitnesses else 0
 
     def get_ind_fitness_single3(self, ind):
         """
@@ -316,161 +253,161 @@ class Balancer:
         plt.legend()
 
 
-class BalancerV2:
-    # Serupa dengan Balancer V1 di atas namun dirancang untuk mensimulasikan Himpunan 2 Ruang Graf Sekaligus (G_1 \times G_2).
-    # Bertujuan untuk optimasi sinkronisasi relasi keseimbangan dua faksi / dua sub-pohon perekonomian game bersaing
-    # agar rasio output pool faksi A $\approx$ kelompok B
-    def __init__(self, g_config1, g_config2, pop_size=10, n_sim=10, n_sim_steps=100, threshold=0.99, agent1=None, agent2=None):
-        self.g_config1 = g_config1
-        self.g_config2 = g_config2
-        self.monitor = {"best": [], "avg": []}
-        self.pop_size = pop_size
-        self.population = []
-        self.n_sim = n_sim
-        self.n_sim_steps = n_sim_steps
-        self.init_population()
-        self.result = None
-        self.threshold = threshold
-        self.agent1 = agent1
-        self.agent2 = agent2
-        print(n_sim)
-
-    def init_ind(self):
-        # Membentuk array tupel ganda dari sistem Graf 1 dan Graf 2
-        g1 = Graph(config=self.g_config1["conf"], edge_list=self.g_config1["edges"])
-        g2 = Graph(config=self.g_config2["conf"], edge_list=self.g_config2["edges"])
-        edges1 = sum([len(n.output_edges) for n in g1.get_nodes_of(RandomGate)])
-        edges2 = sum([len(n.output_edges) for n in g2.get_nodes_of(RandomGate)])
-        ind_g1 = [np.random.randint(1, 4, size=len(self.g_config1["edges"]) - edges1).tolist(),
-                  [round(i, 2) for i in np.random.uniform(0, 1, size=edges1).tolist()]]
-        ind_g2 = [np.random.randint(1, 4, size=len(self.g_config2["edges"]) - edges2).tolist(),
-                  [round(i, 2) for i in np.random.uniform(0, 1, size=edges2).tolist()]]
-        return [ind_g1, ind_g2]
-
-    def init_population(self):
-        for i in range(self.pop_size):
-            self.population.append(self.init_ind())
-
-    def get_ind_fitness_single(self, ind):
-        # Pengukuran Fungsi Loss: f(W_1, W_2) \to \mathbb{R} (Meminimalkan delta rasio skalar antar G1 Node dan G2 Node)
-        try:
-            g1 = Graph(config=self.g_config1["conf"], edge_list=self.g_config1["edges"], weights=ind[0])
-            res1 = g1.simulate(self.n_sim_steps, agent=self.agent1)
-            g2 = Graph(config=self.g_config2["conf"], edge_list=self.g_config2["edges"], weights=ind[1])
-            res2 = g2.simulate(self.n_sim_steps, agent=self.agent2)
-        except ZeroDivisionError:
-            # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
-            return 0
-            
-        keys1, keys2 = list(res1.keys()), list(res2.keys())
-        values = sorted(
-            [res1[keys1[self.g_config1["balance_node"]]][-1], res2[keys2[self.g_config2["balance_node"]]][-1]])
-        try:
-            return round(values[0] / values[1], 2)
-        except ZeroDivisionError:
-            return 1
-
-    def get_ind_fitness(self, ind):
-        res = [self.get_ind_fitness_single(ind) for _ in range(self.n_sim)]
-        return round(sum(res) / len(res), 2)
-
-    def get_fitness(self):
-        fitness = []
-        for ind in self.population:
-            fitness.append(self.get_ind_fitness(ind))
-
-        # Sort Sort \mathcal{O}(N\log N) Fitness
-        fitness_sorted = np.argsort(fitness)
-        pop_ = np.array(self.population, dtype=object)
-        fitness = np.array(fitness)
-        pop_ = pop_[fitness_sorted][::-1][:self.pop_size]
-        self.population = pop_.tolist()
-        
-        print(sorted(fitness)[-1]) # Logging Ekspektasi Maksimum Global f \to \max (\mathbb{X})
-        self._monitor(fitness)
-        if fitness.max() >= self.threshold:
-            self.result = self.population[0]
-            return fitness.max()
-
-    def crossover(self):
-        # Replikasi genetik persilangan dengan matriks multi-dimensi (Sub-vektor parent A1, A2, B1, B2)
-        indices = list(range(len(self.population)))
-        random.shuffle(indices)
-        new = []
-        for idx in range(len(indices))[::2]:
-            one = self.population[indices[idx]]
-            two = self.population[indices[idx + 1]]
-            split_point1 = np.random.randint(max(len(one[0][0]), 1))
-            split_point2 = np.random.randint(max(len(one[1][0]), 1))
-
-            new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]], one[0][1]], one[1]])
-            new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]], two[0][1]], one[1]])
-            new.append([two[0], [[*one[1][0][:split_point2], *two[1][0][split_point2:]], one[1][1]]])
-            new.append([two[0], [[*one[1][0][:split_point2], *two[1][0][split_point2:]], two[1][1]]])
-
-            # Operasi Modulasi Properti Peluang / Normalisasi Mutasi p_i - Variabel Skalar Deviasi \sigma_x
-            mean1 = np.mean(one[0][1]) * 0.2
-            mean2 = np.mean(one[1][1]) * 0.2
-            if np.random.randint(1) == 1:  # + or -
-                new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
-                             (abs(np.array(one[0][1]) + mean1)).tolist()], one[1]])
-                new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
-                             (abs(np.array(two[0][1]) + mean1)).tolist()], one[1]])
-                new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
-                                     (abs(np.array(one[1][1]) + mean2)).tolist()]])
-                new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
-                                     (abs(np.array(two[1][1]) + mean2)).tolist()]])
-            else:
-                new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
-                             (abs(np.array(one[0][1]) - mean1)).tolist()], one[1]])
-                new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
-                             (abs(np.array(two[0][1]) - mean1)).tolist()], one[1]])
-                new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
-                                     (abs(np.array(one[1][1]) - mean2)).tolist()]])
-                new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
-                                     (abs(np.array(two[1][1]) - mean2)).tolist()]])
-        self.population.extend(new)
-
-    def mutate(self):
-        # Fungsi lambda internal / sub-fungsi untuk modularisasi per blok sub-genetik
-        def mutate_g(g):
-            selection = np.random.randint(len(self.population))
-            selection_weight = np.random.randint(len(self.population[0][g][0]))
-            mutation = np.random.randint(8)
-            if np.random.randint(1) == 0:
-                self.population[selection][g][0][selection_weight] += mutation
-            else:
-                self.population[selection][g][0][selection_weight] -= mutation
-                if self.population[selection][g][0][selection_weight] < 1:
-                    self.population[selection][g][0][selection_weight] = 1
-
-        mutate_g(0)
-        mutate_g(1)
-
-    def handle_frozen_weights(self):
-        for p in self.population:
-            for i in self.g_config1["frozen_weights"]:
-                p[0][0][i] = 1
-            for i in self.g_config2["frozen_weights"]:
-                p[1][0][i] = 1
-
-    def run(self, steps=100):
-        # Loop Epochs
-        for i in range(steps):
-            self.crossover()
-            self.mutate()
-            self.handle_frozen_weights()
-            fitness = self.get_fitness()
-            if fitness is not None:
-                print(f"Stopped after {i} iteration with a fitness of: {fitness}")
-                break
-
-    def _monitor(self, fitness):
-        self.monitor["best"].append(fitness.max())
-        self.monitor["avg"].append(fitness.mean())
-
-    def plot_monitor(self):
-        fig = plt.figure(figsize=(7, 5))
-        for k, v in self.monitor.items():
-            plt.plot(list(range(len(v))), v, label=k)
-        plt.legend()
+# class BalancerV2:
+#     # Implementasi f2 dari paper GEEvo: optimasi dua ekonomi game sekaligus (G1 x G2).
+#     # Digunakan pada case study mage vs archer (Section IV-B2).
+#     # Tidak dipakai dalam scope TA ini (hanya satu ekonomi yang dioptimasi).
+#     def __init__(self, g_config1, g_config2, pop_size=10, n_sim=10, n_sim_steps=100, threshold=0.99, agent1=None, agent2=None):
+#         self.g_config1 = g_config1
+#         self.g_config2 = g_config2
+#         self.monitor = {"best": [], "avg": []}
+#         self.pop_size = pop_size
+#         self.population = []
+#         self.n_sim = n_sim
+#         self.n_sim_steps = n_sim_steps
+#         self.init_population()
+#         self.result = None
+#         self.threshold = threshold
+#         self.agent1 = agent1
+#         self.agent2 = agent2
+#         print(n_sim)
+#
+#     def init_ind(self):
+#         # Membentuk array tupel ganda dari sistem Graf 1 dan Graf 2
+#         g1 = Graph(config=self.g_config1["conf"], edge_list=self.g_config1["edges"])
+#         g2 = Graph(config=self.g_config2["conf"], edge_list=self.g_config2["edges"])
+#         edges1 = sum([len(n.output_edges) for n in g1.get_nodes_of(RandomGate)])
+#         edges2 = sum([len(n.output_edges) for n in g2.get_nodes_of(RandomGate)])
+#         ind_g1 = [np.random.randint(1, 4, size=len(self.g_config1["edges"]) - edges1).tolist(),
+#                   [round(i, 2) for i in np.random.uniform(0, 1, size=edges1).tolist()]]
+#         ind_g2 = [np.random.randint(1, 4, size=len(self.g_config2["edges"]) - edges2).tolist(),
+#                   [round(i, 2) for i in np.random.uniform(0, 1, size=edges2).tolist()]]
+#         return [ind_g1, ind_g2]
+#
+#     def init_population(self):
+#         for i in range(self.pop_size):
+#             self.population.append(self.init_ind())
+#
+#     def get_ind_fitness_single(self, ind):
+#         # Pengukuran Fungsi Loss: f(W_1, W_2) \to \mathbb{R} (Meminimalkan delta rasio skalar antar G1 Node dan G2 Node)
+#         try:
+#             g1 = Graph(config=self.g_config1["conf"], edge_list=self.g_config1["edges"], weights=ind[0])
+#             res1 = g1.simulate(self.n_sim_steps, agent=self.agent1)
+#             g2 = Graph(config=self.g_config2["conf"], edge_list=self.g_config2["edges"], weights=ind[1])
+#             res2 = g2.simulate(self.n_sim_steps, agent=self.agent2)
+#         except ZeroDivisionError:
+#             # most likely invalid probabilities (zero sum) for random gate, giving now a bad fitness
+#             return 0
+#
+#         keys1, keys2 = list(res1.keys()), list(res2.keys())
+#         values = sorted(
+#             [res1[keys1[self.g_config1["balance_node"]]][-1], res2[keys2[self.g_config2["balance_node"]]][-1]])
+#         try:
+#             return round(values[0] / values[1], 2)
+#         except ZeroDivisionError:
+#             return 1
+#
+#     def get_ind_fitness(self, ind):
+#         res = [self.get_ind_fitness_single(ind) for _ in range(self.n_sim)]
+#         return round(sum(res) / len(res), 2)
+#
+#     def get_fitness(self):
+#         fitness = []
+#         for ind in self.population:
+#             fitness.append(self.get_ind_fitness(ind))
+#
+#         # Sort Sort \mathcal{O}(N\log N) Fitness
+#         fitness_sorted = np.argsort(fitness)
+#         pop_ = np.array(self.population, dtype=object)
+#         fitness = np.array(fitness)
+#         pop_ = pop_[fitness_sorted][::-1][:self.pop_size]
+#         self.population = pop_.tolist()
+#
+#         print(sorted(fitness)[-1]) # Logging Ekspektasi Maksimum Global f \to \max (\mathbb{X})
+#         self._monitor(fitness)
+#         if fitness.max() >= self.threshold:
+#             self.result = self.population[0]
+#             return fitness.max()
+#
+#     def crossover(self):
+#         # Replikasi genetik persilangan dengan matriks multi-dimensi (Sub-vektor parent A1, A2, B1, B2)
+#         indices = list(range(len(self.population)))
+#         random.shuffle(indices)
+#         new = []
+#         for idx in range(len(indices))[::2]:
+#             one = self.population[indices[idx]]
+#             two = self.population[indices[idx + 1]]
+#             split_point1 = np.random.randint(max(len(one[0][0]), 1))
+#             split_point2 = np.random.randint(max(len(one[1][0]), 1))
+#
+#             new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]], one[0][1]], one[1]])
+#             new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]], two[0][1]], one[1]])
+#             new.append([two[0], [[*one[1][0][:split_point2], *two[1][0][split_point2:]], one[1][1]]])
+#             new.append([two[0], [[*one[1][0][:split_point2], *two[1][0][split_point2:]], two[1][1]]])
+#
+#             # Operasi Modulasi Properti Peluang / Normalisasi Mutasi p_i - Variabel Skalar Deviasi \sigma_x
+#             mean1 = np.mean(one[0][1]) * 0.2
+#             mean2 = np.mean(one[1][1]) * 0.2
+#             if np.random.randint(1) == 1:  # + or -
+#                 new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
+#                              (abs(np.array(one[0][1]) + mean1)).tolist()], one[1]])
+#                 new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
+#                              (abs(np.array(two[0][1]) + mean1)).tolist()], one[1]])
+#                 new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
+#                                      (abs(np.array(one[1][1]) + mean2)).tolist()]])
+#                 new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
+#                                      (abs(np.array(two[1][1]) + mean2)).tolist()]])
+#             else:
+#                 new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
+#                              (abs(np.array(one[0][1]) - mean1)).tolist()], one[1]])
+#                 new.append([[[*one[0][0][:split_point1], *two[0][0][split_point1:]],
+#                              (abs(np.array(two[0][1]) - mean1)).tolist()], one[1]])
+#                 new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
+#                                      (abs(np.array(one[1][1]) - mean2)).tolist()]])
+#                 new.append([two[0], [[*one[1][0][:split_point1], *two[1][0][split_point1:]],
+#                                      (abs(np.array(two[1][1]) - mean2)).tolist()]])
+#         self.population.extend(new)
+#
+#     def mutate(self):
+#         # Fungsi lambda internal / sub-fungsi untuk modularisasi per blok sub-genetik
+#         def mutate_g(g):
+#             selection = np.random.randint(len(self.population))
+#             selection_weight = np.random.randint(len(self.population[0][g][0]))
+#             mutation = np.random.randint(8)
+#             if np.random.randint(1) == 0:
+#                 self.population[selection][g][0][selection_weight] += mutation
+#             else:
+#                 self.population[selection][g][0][selection_weight] -= mutation
+#                 if self.population[selection][g][0][selection_weight] < 1:
+#                     self.population[selection][g][0][selection_weight] = 1
+#
+#         mutate_g(0)
+#         mutate_g(1)
+#
+#     def handle_frozen_weights(self):
+#         for p in self.population:
+#             for i in self.g_config1["frozen_weights"]:
+#                 p[0][0][i] = 1
+#             for i in self.g_config2["frozen_weights"]:
+#                 p[1][0][i] = 1
+#
+#     def run(self, steps=100):
+#         # Loop Epochs
+#         for i in range(steps):
+#             self.crossover()
+#             self.mutate()
+#             self.handle_frozen_weights()
+#             fitness = self.get_fitness()
+#             if fitness is not None:
+#                 print(f"Stopped after {i} iteration with a fitness of: {fitness}")
+#                 break
+#
+#     def _monitor(self, fitness):
+#         self.monitor["best"].append(fitness.max())
+#         self.monitor["avg"].append(fitness.mean())
+#
+#     def plot_monitor(self):
+#         fig = plt.figure(figsize=(7, 5))
+#         for k, v in self.monitor.items():
+#             plt.plot(list(range(len(v))), v, label=k)
+#         plt.legend()

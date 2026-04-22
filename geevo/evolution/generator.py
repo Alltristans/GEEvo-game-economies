@@ -111,45 +111,6 @@ class EvolutionaryGraphGeneration:
         # Mengembalikan skalar penimbang Fitness (batas infimum himpunan array sorted - elemen paling optimal [0])
         return sorted(fitness_list)[0]
 
-    def crossover(self):
-        """
-        Operasi Crossover Genetika (Persilangan Ruang State Dua Vektor Array)
-        Secara aljabar, ini adalah substitusi partisi array himpunan edge matriks ketetanggaan A.
-        """
-        # Formasi array himpunan urutan skalar 0 \dots n, yang dipecah probabilitas permutasi indeks secara acak seragam The Fisher-Yates shuffle
-        indices = list(range(len(self.population)))
-        random.shuffle(indices)
-        
-        # Operasi modular absolut % 2 untuk meyakini jumlah urutan index matriks bilangan pembagi utuh yang genap
-        if len(indices) % 2 == 1:
-            indices = indices[:-1]
-            
-        for idx in range(len(indices)):
-            # Vektor list Edge A \rightarrow parent 1; Vektor list Edge B \rightarrow parent 2
-            one = self.get_edge_list(self.population[indices[idx]])
-            two = self.get_edge_list(self.population[indices[idx + 1]])
-            n = self.init_nodes() # Vektor Anakan Oksigen (Reinisialisasi Obyek Kosong, Child Array)
-
-            pos = np.random.randint(len(one))
-            # Transfer operasi sekuensial titik skalar: Substitusi tuple sisi terdeterminasi parent B 
-            n[two[idx][0]].connect(n[one[idx][1]], 1, node_id=one[idx][1])
-
-            # Looping seleksi gen silang: batas himpunan iterasi C = supremum infimum {len(one), len(two)} (Mencari panjang \min array terpendek)
-            for idx in range(sorted([len(one), len(two)])[0]):
-                try:
-                    # Model percobaan dua keluaran {0, 1} probabilitas binomial
-                    # (Probabilitas Crossover = 50% Pertukaran genetik random dari A ke C, 50% dari B ke C)
-                    if np.random.randint(1) == 0:
-                        # Vektor Koneksi fA(x) + fB(x)
-                        n[one[idx][0]].connect(n[two[idx][1]], 1, node_id=two[idx][1])
-                    else:
-                        n[two[idx][0]].connect(n[one[idx][1]], 1, node_id=one[idx][1])
-                except ValueError:
-                    # do not connect if connection is not allowed (Menjaga graf terarah tidak cyclic melanggar topological order fungsi)
-                    pass
-            # Memasukkan array anakan hasil persilangan hibrida (P \cup C) ke populasi
-            self.population.append(n)
-
     def run(self, steps=150_000):
         # Eksekusi iterasi berbatas steps (Langkah komputasi iterasi batas epoch N)
         start = datetime.now()
